@@ -4,8 +4,10 @@ const asyncHandler = (reqHandler) => {
     }
 }
 
-
 export {asyncHandler}
+
+
+
 
 
 // using Try Catch 
