@@ -11,7 +11,7 @@ const generateAccessAndRefreshToken = async(userId) => {
         const refreshToken = user.generateRefreshToken();
 
         user.refreshToken = refreshToken;
-        await user.save({validateBeforeSave: false})
+        await user.save({ validateBeforeSave: false })
 
         return {accessToken, refreshToken}
 
@@ -19,6 +19,11 @@ const generateAccessAndRefreshToken = async(userId) => {
         throw new ApiError(500, "Something went wrong, while creating access and refresh token")
     }
 }
+// The main purpose of using access and refresh tokens is to avoid users having to repeatedly provide their details. The access token has a short lifespan, and the refresh token is stored in the database to regenerate the access token once it expires. The overall goal is to ensure that users do not need to share their login details repeatedly.
+// Access Token - Short lived, not stored in db
+// Refresh Token - Long lived, stored in db
+// When access token expires, the frontend sends the refresh token to the backend to validate user (login), once again.
+
 const registerUser = asyncHandler( async (req, res) => {
 
     const {fullname, email, username, password} = req.body
@@ -37,14 +42,14 @@ const registerUser = asyncHandler( async (req, res) => {
     }
     // console.log(req.files)
 
-    // const avatarLocalPath = req.files?.avatar[0]?.path
+    const avatarLocalPath = req.files?.avatar[0]?.path
     // const coverImageLocalPath = req.files?.coverImage[0]?.path
 
-    let avatarLocalPath;
-    if(req.files && Array.isArray(req.files.avatar) && req.files.avatar.length > 0){
-        avatarLocalPath = req.files.avatar[0].path
-    }
-
+    // let avatarLocalPath;
+    // if(req.files && Array.isArray(req.files.avatar) && req.files.avatar.length > 0){
+    //     avatarLocalPath = req.files.avatar[0].path
+    // }
+ 
     let coverImageLocalPath;
     if(req.files && Array.isArray(req.files.coverImage) && req.files.coverImage.length > 0){
         coverImageLocalPath = req.files.coverImage[0].path
@@ -84,7 +89,7 @@ const registerUser = asyncHandler( async (req, res) => {
 const loginUser = asyncHandler( async(req, res) => {
     const {username, email, password} = req.body;
 
-    if(!username || !email){
+    if(!username && !email){
         throw new ApiError(400, "username or email is required")
     }
 
@@ -99,7 +104,7 @@ const loginUser = asyncHandler( async(req, res) => {
     const isPasswordValid = await user.isPasswordCorrect(password)
 
     if(!isPasswordValid){
-        throw new ApiError(401, "Invalid user credientials")
+        throw new ApiError(401, "Invalid user credentials.")
     }
 
     const {accessToken, refreshToken} = await generateAccessAndRefreshToken(user._id)
@@ -107,11 +112,14 @@ const loginUser = asyncHandler( async(req, res) => {
     const loggedInUser = await User.findById(user._id).select("-password -refreshToken")
 
     const options = {
-        httpOnly: true,
-        secure: true
+        httpOnly: true,  // dont let browser javascript access cookie ever
+        // secure: true, // only use cookie over https
     } // So, that user cannot change the cookie, only accessable from backend, kind of security purpose.
 
-    return res.status(200).cookie("accessToken", accessToken, options).cookie("refressToken", refreshToken, options)
+    return res
+    .status(200)
+    .cookie("accessToken", accessToken, options)
+    .cookie("refreshToken", refreshToken, options)
     .json(
         new ApiResponse(200,
             {
@@ -123,13 +131,13 @@ const loginUser = asyncHandler( async(req, res) => {
 
 })
 
-const logOutUser = asyncHandler(async(req, res) => {
+const logoutUser = asyncHandler(async(req, res) => {
     await User.findByIdAndUpdate(
-        res.user._id,
+        req.user._id,
         {
-            $set: {
-                refreshToken: undefined
-            }
+            $unset: {
+                refreshToken: 1,
+            },
            
         },
         {
@@ -137,14 +145,16 @@ const logOutUser = asyncHandler(async(req, res) => {
         }
     ) 
     const options = {
-        httpOnly: true,
-        secure: true
+        httpOnly: true,  // dont let browser javascript access cookie ever
+        // secure: true, // only use cookie over https
     }
 
     return res
     .status(200)
     .clearCookie("accessToken", options)
     .clearCookie("refreshToken", options)
+    // .clearCookie("accessToken", { ...options, path: "/" })
+    // .clearCookie("refreshToken", { ...options, path: "/" })
     .json(new ApiResponse(200, {}, "User Logged Out successfully"))
 })
-export {registerUser, loginUser, logOutUser}
+export {registerUser, loginUser, logoutUser}
